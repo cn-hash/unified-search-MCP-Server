@@ -556,6 +556,216 @@ def recover_protocol(url: str) -> str:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
 
 
+# ============================================================
+# JS逆向分析工具 (参考 js-reverse-mcp)
+# ============================================================
+
+_LIST_SCRIPTS_JS = """
+import time, json
+from browser_harness.helpers import js
+
+result = js("(function(){var scripts=performance.getEntriesByType('resource').filter(function(e){return e.initiatorType==='script'});var res=scripts.map(function(s){return{url:s.name,size:s.transferSize,duration:Math.round(s.duration)}});return JSON.stringify(res)})()")
+print(result)
+"""
+
+_SEARCH_SCRIPTS_JS = """
+import time, json
+from browser_harness.helpers import js
+
+keyword = "__KEYWORD__"
+result = js("(function(){return new Promise(function(resolve){var scripts=document.querySelectorAll('script[src]');var results=[];var pending=scripts.length;if(pending===0){resolve(JSON.stringify([]));return}scripts.forEach(function(s){var url=s.src;var x=new XMLHttpRequest();x.open('GET',url);x.onload=function(){var text=x.responseText;var matches=[];var idx=0;while((idx=text.indexOf('__KEYWORD__',idx))!==-1){matches.push({position:idx,context:text.substring(Math.max(0,idx-50),idx+50).replace(/\\n/g,' ')});idx++;if(matches.length>=5)break}if(matches.length>0)results.push({url:url,match_count:matches.length,matches:matches});pending--;if(pending===0)resolve(JSON.stringify(results))};x.onerror=function(){pending--;if(pending===0)resolve(JSON.stringify(results))};x.send()})})()")
+
+print(result)
+"""
+
+_GET_SCRIPT_SOURCE_JS = """
+import time, json
+from browser_harness.helpers import js
+
+script_url = "__SCRIPT_URL__"
+result = js("(function(){return new Promise(function(resolve){var x=new XMLHttpRequest();x.open('GET','__SCRIPT_URL__');x.onload=function(){resolve(JSON.stringify({url:'__SCRIPT_URL__',size:x.responseText.length,source:x.responseText.substring(0,50000)}))};x.onerror=function(){resolve(JSON.stringify({error:'failed to fetch script'}))};x.send()})})()")
+print(result)
+"""
+
+_EXPORT_REQUEST_JS = """
+import time, json
+from browser_harness.helpers import cdp, js
+
+cdp("Page.addScriptToEvaluateOnNewDocument", source=\"\"\"
+(function() {
+    window.__reqDetail = [];
+    var _o=XMLHttpRequest.prototype.open,_s=XMLHttpRequest.prototype.send,_h=XMLHttpRequest.prototype.setRequestHeader;
+    XMLHttpRequest.prototype.open=function(m,u){this.__m=m;this.__u=u;this.__h={};return _o.apply(this,arguments)};
+    XMLHttpRequest.prototype.setRequestHeader=function(k,v){this.__h[k]=v;return _h.apply(this,arguments)};
+    XMLHttpRequest.prototype.send=function(b){var self=this;this.addEventListener('load',function(){window.__reqDetail.push({method:self.__m,url:self.__u,body:b?String(b):'',status:self.status,headers:JSON.parse(JSON.stringify(self.__h)),responseHeaders:self.getAllResponseHeaders(),responseType:self.responseType,responseSize:self.responseText?self.responseText.length:0,responsePreview:self.responseText?self.responseText.substring(0,2000):''})});return _s.apply(this,arguments)};
+})()
+\"\"\")
+
+js("window.location.href=__TARGET_URL__")
+time.sleep(8)
+js("window.scrollTo(0,document.body.scrollHeight)")
+time.sleep(3)
+
+reqs = json.loads(js("JSON.stringify(window.__reqDetail||[])"))
+filter_kw = "__FILTER__"
+if filter_kw:
+    reqs = [r for r in reqs if filter_kw in r.get('url','')]
+reqs = [r for r in reqs if not any(r['url'].endswith(ext) for ext in ['.js','.css','.png','.jpg','.gif','.svg','.woff','.ico'])]
+
+print(json.dumps({"count": len(reqs), "requests": reqs[:30]}, ensure_ascii=False, indent=2))
+"""
+
+_SCREENSHOT_JS = """
+import time
+from browser_harness.helpers import js
+
+js("window.scrollTo(0,0)")
+time.sleep(1)
+
+title = js("document.title").replace("/","_").replace("\\\\","_").replace(":","_")[:30]
+path = "E:/skill/screenshot_" + title + ".png"
+
+from browser_harness.helpers import cdp
+cdp("Page.captureScreenshot", format="png")
+
+# Use browser-harness built-in
+capture_screenshot(path)
+print(json.dumps({"path": path, "title": title}))
+"""
+
+_WEB_SEARCH_JS = """
+import time, json, urllib.parse
+from browser_harness.helpers import js
+
+query = urllib.parse.quote("__QUERY__")
+engine = "__ENGINE__"
+
+if engine == "bing":
+    url = "https://www.bing.com/search?q=" + query
+elif engine == "google":
+    url = "https://www.google.com/search?q=" + query
+elif engine == "baidu":
+    url = "https://www.baidu.com/s?wd=" + query
+else:
+    url = "https://www.bing.com/search?q=" + query
+
+js("window.location.href='" + url + "'")
+time.sleep(6)
+
+if engine == "bing":
+    result = js("(function(){var items=document.querySelectorAll('#b_results .b_algo');var res=[];for(var i=0;i<Math.min(items.length,20);i++){var el=items[i];var a=el.querySelector('h2 a');var p=el.querySelector('.b_caption p');res.push({title:a?a.textContent:'',url:a?a.href:'',description:p?p.textContent:''})}return JSON.stringify(res)})()")
+elif engine == "google":
+    result = js("(function(){var items=document.querySelectorAll('.g');var res=[];for(var i=0;i<Math.min(items.length,20);i++){var el=items[i];var a=el.querySelector('a h3')?el.querySelector('a'):null;var s=el.querySelector('.VwiC3b');res.push({title:a?a.textContent:'',url:a?a.href:'',description:s?s.textContent:''})}return JSON.stringify(res)})()")
+elif engine == "baidu":
+    result = js("(function(){var items=document.querySelectorAll('.result.c-container');var res=[];for(var i=0;i<Math.min(items.length,20);i++){var el=items[i];var a=el.querySelector('h3 a');var abs=el.querySelector('.content-right_8Zs40,.c-abstract');res.push({title:a?a.textContent:'',url:a?a.href:'',description:abs?abs.textContent:''})}return JSON.stringify(res)})()")
+else:
+    result = "[]"
+
+print(result)
+"""
+
+
+@mcp.tool()
+def list_scripts(url: str) -> str:
+    """列出目标页面加载的所有JavaScript脚本文件。参考js-reverse-mcp的脚本分析能力。"""
+    try:
+        script = _LIST_SCRIPTS_JS.replace("__TARGET_URL__", "'" + url + "'")
+        raw = run_bh(script, timeout=30)
+        items = json.loads(raw)
+        return json.dumps({"count": len(items), "scripts": items}, ensure_ascii=False, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+@mcp.tool()
+def search_scripts(url: str, keyword: str) -> str:
+    """在目标页面所有JS脚本中搜索关键词，返回匹配位置和上下文。用于定位签名/加密函数。"""
+    try:
+        script = _SEARCH_SCRIPTS_JS.replace("__TARGET_URL__", "'" + url + "'").replace("__KEYWORD__", keyword)
+        raw = run_bh(script, timeout=60)
+        items = json.loads(raw)
+        return json.dumps({"keyword": keyword, "matched_scripts": len(items), "results": items}, ensure_ascii=False, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+@mcp.tool()
+def get_script_source(script_url: str) -> str:
+    """获取指定JS脚本的源代码。用于分析签名算法、加密逻辑等。"""
+    try:
+        script = _GET_SCRIPT_SOURCE_JS.replace("__SCRIPT_URL__", script_url)
+        raw = run_bh(script, timeout=30)
+        return raw
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+@mcp.tool()
+def export_request_detail(url: str, filter_keyword: str = "") -> str:
+    """导出目标页面的完整网络请求详情（headers/body/response）。用于分析API协议。"""
+    try:
+        script = (_EXPORT_REQUEST_JS
+                  .replace("__TARGET_URL__", "'" + url + "'")
+                  .replace("__FILTER__", filter_keyword))
+        return run_bh(script, timeout=30)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+@mcp.tool()
+def take_screenshot(url: str = "") -> str:
+    """截取当前页面或指定URL的截图，保存到本地。返回文件路径。"""
+    try:
+        import os
+        os.makedirs("E:/skill/screenshots", exist_ok=True)
+        ts = str(int(time.time()))
+        path = f"E:/skill/screenshots/screenshot_{ts}.png"
+
+        if url:
+            script = f"""
+import time
+from browser_harness.helpers import js
+js("window.location.href='{url}'")
+time.sleep(6)
+capture_screenshot("{path}")
+print("{path}")
+"""
+        else:
+            script = f"""
+from browser_harness.helpers import js
+capture_screenshot("{path}")
+print("{path}")
+"""
+        raw = run_bh(script, timeout=20)
+        return json.dumps({"path": raw.strip(), "url": url or "current page"}, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
+@mcp.tool()
+def web_search(query: str, engine: str = "bing", max_results: int = 10) -> str:
+    """
+    通用Web搜索引擎，无需API Key。支持Bing/Google/百度。
+
+    Args:
+        query: 搜索关键词
+        engine: 搜索引擎 (bing/google/baidu)
+        max_results: 最大结果数
+
+    Returns:
+        JSON数组: [{title, url, description}]
+    """
+    try:
+        script = (_WEB_SEARCH_JS
+                  .replace("__QUERY__", query.replace('"', '\\"'))
+                  .replace("__ENGINE__", engine))
+        raw = run_bh(script, timeout=30)
+        items = json.loads(raw)
+        return json.dumps({"engine": engine, "query": query, "count": len(items[:max_results]), "items": items[:max_results]}, ensure_ascii=False, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
+
 if __name__ == "__main__":
     logger.info("Unified Search MCP Server starting...")
     mcp.run(transport="stdio")
