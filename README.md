@@ -95,7 +95,7 @@ cd unified-search-MCP-Server
 hermes mcp add unified-search --command python --args "/path/to/server.py"
 ```
 
-注册后在新 session 中自动加载 10 个工具。
+注册后在新 session 中自动加载 16 个工具。
 
 ## 使用示例
 
