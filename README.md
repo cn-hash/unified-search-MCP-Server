@@ -34,6 +34,24 @@ Unified Search MCP Server 是一个基于 [Model Context Protocol (MCP)](https:/
 | `reverse_signing` | 分析请求签名机制（X-s/a_bogus/anti-content等） |
 | `scrape_generic` | CSS选择器通用数据提取，支持text/href/src等字段 |
 
+### JS逆向分析工具（4 个工具）🆕
+
+*参考 [js-reverse-mcp](https://github.com/zhizhuodemao/js-reverse-mcp) 设计*
+
+| 工具 | 功能 |
+|------|------|
+| `list_scripts` | 列出页面加载的所有JS脚本文件及大小 |
+| `search_scripts` | 在所有JS脚本中搜索关键词，返回匹配位置和上下文 |
+| `get_script_source` | 获取指定JS脚本的源代码 |
+| `export_request_detail` | 导出完整网络请求详情（headers/body/response） |
+
+### 辅助工具（2 个工具）🆕
+
+| 工具 | 功能 |
+|------|------|
+| `take_screenshot` | 截取页面截图，保存到本地 |
+| `web_search` | 通用Web搜索（Bing/Google/百度），无需API Key |
+
 ## 工作原理
 
 ```
@@ -170,6 +188,8 @@ unified-search-MCP-Server/
 
 - [Model Context Protocol](https://modelcontextprotocol.io)
 - [Hermes Agent by Nous Research](https://nousresearch.com)
+- [js-reverse-mcp](https://github.com/zhizhuodemao/js-reverse-mcp) — JS逆向分析工具设计参考
+- [search-server](https://github.com/fengin/search-server) — 多搜索引擎架构参考
 
 ## License
 
